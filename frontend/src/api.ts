@@ -1,0 +1,44 @@
+import { GeneratedBatch, ReconciliationResult } from './types';
+
+const API_BASE = 'http://localhost:8000/api';
+
+export async function generateBatch(seed: number = 42): Promise<GeneratedBatch> {
+  const resp = await fetch(`${API_BASE}/generate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ seed }),
+  });
+  if (!resp.ok) {
+    throw new Error(`Generation failed: ${resp.statusText}`);
+  }
+  return resp.json();
+}
+
+export async function runReconciliation(seed?: number, data?: { orders: any[]; settlements: any[]; bank: any[] }): Promise<ReconciliationResult> {
+  const body = seed !== undefined ? { seed } : data;
+  const resp = await fetch(`${API_BASE}/reconcile`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!resp.ok) {
+    throw new Error(`Reconciliation failed: ${resp.statusText}`);
+  }
+  return resp.json();
+}
+
+export async function uploadCSVs(ordersFile: File, settlementsFile: File, bankFile: File): Promise<ReconciliationResult> {
+  const formData = new FormData();
+  formData.append('orders', ordersFile);
+  formData.append('settlements', settlementsFile);
+  formData.append('bank', bankFile);
+
+  const resp = await fetch(`${API_BASE}/upload`, {
+    method: 'POST',
+    body: formData,
+  });
+  if (!resp.ok) {
+    throw new Error(`CSV Upload failed: ${resp.statusText}`);
+  }
+  return resp.json();
+}
