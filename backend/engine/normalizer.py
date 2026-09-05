@@ -90,6 +90,7 @@ def parse_csv_orders(rows: List[dict]) -> List[RawOrder]:
             payment_method=row.get("payment_method", ""),
             status=row.get("status", ""),
             refund_inr=float(re.sub(r"[^\d.]", "", row.get("refund_inr", "0") or "0")),
+            tag=row.get("tag", "") or "",
         ))
     return result
 
@@ -107,6 +108,7 @@ def parse_csv_settlements(rows: List[dict]) -> List[RawSettlement]:
             gst_inr=float(re.sub(r"[^\d.]", "", row.get("gst_inr", "0") or "0")),
             tds_inr=float(re.sub(r"[^\d.]", "", row.get("tds_inr", "0") or "0")),
             net_inr=float(re.sub(r"[^\d.]", "", row.get("net_inr", "0") or "0")),
+            tag=row.get("tag", "") or "",
         ))
     return result
 
@@ -119,6 +121,7 @@ def parse_csv_bank(rows: List[dict]) -> List[RawBankCredit]:
             credited_at=row.get("credited_at", ""),
             amount_inr=float(re.sub(r"[^\d.]", "", row.get("amount_inr", "0") or "0")),
             description=row.get("description", ""),
+            tag=row.get("tag", "") or "",
         ))
     return result
 

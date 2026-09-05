@@ -14,8 +14,9 @@ import logging
 import os
 from typing import List, Optional
 
-from fastapi import FastAPI, HTTPException, UploadFile, File
+from fastapi import FastAPI, HTTPException, Request, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from engine.generator import generate
@@ -41,19 +42,59 @@ app = FastAPI(
 _default_origins = ["http://localhost:5173", "http://localhost:5174",
                      "http://127.0.0.1:5173", "http://127.0.0.1:5174"]
 _frontend_url = os.environ.get("FRONTEND_URL", "")
-_allow_origins = [o.strip() for o in _frontend_url.split(",") if o.strip()] or _default_origins
+# .rstrip("/") guards against the single most common copy-paste mistake:
+# pasting the frontend URL WITH a trailing slash. A browser's Origin header
+# is always scheme://host[:port] with no trailing slash, so an origin of
+# "https://foo.vercel.app/" in FRONTEND_URL would never match and CORS
+# would silently reject every request from the real frontend.
+_allow_origins = [o.strip().rstrip("/") for o in _frontend_url.split(",") if o.strip()] or _default_origins
 if _frontend_url:
     # Keep local dev origins usable even when FRONTEND_URL is set (e.g. a
     # developer pointing their local backend at a deployed FRONTEND_URL).
     _allow_origins = list(dict.fromkeys(_allow_origins + _default_origins))
 
+# Logged at startup (visible in Railway/Render deploy logs) so a CORS
+# misconfiguration is visible without needing to reproduce a failing
+# request first — check this line first if the frontend reports
+# "Failed to fetch" or a browser console CORS error.
+logger.info(f"CORS allow_origins resolved to: {_allow_origins}")
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_allow_origins,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
 )
+
+
+# ---------------------------------------------------------------------------
+# Global exception handler
+# ---------------------------------------------------------------------------
+# WHY THIS EXISTS: an unhandled exception raised inside a route normally
+# reaches Starlette's error-handling machinery WITHOUT CORSMiddleware ever
+# getting a chance to add its headers to the resulting 500 response —
+# verified empirically on this Starlette version: even a response returned
+# from an @app.exception_handler came back with no Access-Control-Allow-*
+# headers at all. A browser then can't read that cross-origin response and
+# the fetch() call rejects with the generic, unhelpful "TypeError: Failed to
+# fetch" — indistinguishable from a real CORS misconfiguration or the
+# backend being down, even though the backend is fine and just hit a bug.
+# Fix: set the CORS headers on this response directly, rather than relying
+# on CORSMiddleware to have another chance at it.
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    logger.exception(f"Unhandled exception on {request.method} {request.url.path}")
+    response = JSONResponse(
+        status_code=500,
+        content={"detail": f"Internal server error: {exc}"},
+    )
+    origin = request.headers.get("origin")
+    if origin and origin.rstrip("/") in _allow_origins:
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+        response.headers["Vary"] = "Origin"
+    return response
 
 
 # ---------------------------------------------------------------------------

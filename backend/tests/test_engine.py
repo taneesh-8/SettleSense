@@ -15,6 +15,7 @@ from engine.fuzzy_matcher import _levenshtein, _heuristic_match
 from engine.guardrail import run_guardrail
 from engine.fuzzy_matcher import ProposedMatch
 from engine.pipeline import reconcile
+from engine.normalizer import parse_csv_orders, parse_csv_settlements, parse_csv_bank
 
 
 # ---------------------------------------------------------------------------
@@ -321,6 +322,55 @@ def test_validate_exception_tags_catches_mismatch():
 
     good = bad.model_copy(update={"tag": "orphan_credit"})
     _validate_exception_tags([good])  # must not raise
+
+
+# ---------------------------------------------------------------------------
+# CSV round-trip (the /api/upload path) — regression coverage
+# ---------------------------------------------------------------------------
+
+def _to_csv_rows(models) -> list:
+    """Simulate what csv.DictReader hands parse_csv_* after a real CSV
+    round-trip: every value coerced to a string, exactly like a browser-
+    uploaded CSV file would produce."""
+    return [{k: str(v) for k, v in m.model_dump().items()} for m in models]
+
+
+def test_csv_round_trip_preserves_tag():
+    """Regression test: parse_csv_orders/settlements/bank must preserve the
+    'tag' column. This was previously dropped entirely (RawOrder/Settlement/
+    BankCredit were constructed without a tag= kwarg at all), which meant
+    every CSV-uploaded record silently got tag="" regardless of its real
+    seeded category. That tripped the tag/reason consistency guard in
+    reporter.py — e.g. an 'Unsettled order' exception ending up with
+    tag='' instead of 'unsettled' — raising ValueError and crashing
+    /api/upload with an unhandled 500 for every CSV upload."""
+    raw_orders, raw_settlements, raw_bank = generate(seed=42)
+
+    csv_orders = parse_csv_orders(_to_csv_rows(raw_orders))
+    csv_settlements = parse_csv_settlements(_to_csv_rows(raw_settlements))
+    csv_bank = parse_csv_bank(_to_csv_rows(raw_bank))
+
+    assert [o.tag for o in csv_orders] == [o.tag for o in raw_orders]
+    assert [s.tag for s in csv_settlements] == [s.tag for s in raw_settlements]
+    assert [b.tag for b in csv_bank] == [b.tag for b in raw_bank]
+    # Specifically: at least one non-empty tag actually survived the round trip
+    assert any(o.tag for o in csv_orders)
+
+
+def test_csv_upload_path_reconciles_without_crashing():
+    """End-to-end: the exact data transformation /api/upload performs
+    (CSV rows -> parse_csv_* -> reconcile) must not raise. This is what
+    would have caught the tag-dropping bug via the actual code path the
+    upload endpoint uses, before it ever reached a live deployment."""
+    raw_orders, raw_settlements, raw_bank = generate(seed=42)
+
+    csv_orders = parse_csv_orders(_to_csv_rows(raw_orders))
+    csv_settlements = parse_csv_settlements(_to_csv_rows(raw_settlements))
+    csv_bank = parse_csv_bank(_to_csv_rows(raw_bank))
+
+    result = reconcile(csv_orders, csv_settlements, csv_bank)  # must not raise
+    assert result.report.total_orders == 53
+    assert result.report.confirmed_order_count > 0
 
 
 if __name__ == "__main__":
