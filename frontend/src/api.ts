@@ -1,8 +1,8 @@
 import { GeneratedBatch, ReconciliationResult } from './types';
 
-// VITE_API_URL is injected at build time (Render sets it as an env var on
-// the static site's build). Falls back to the local FastAPI dev server so
-// `npm run dev` keeps working with zero config.
+// VITE_API_URL is injected at build time (set as an env var on whatever
+// static host builds this — Vercel, Render, etc.). Falls back to the local
+// FastAPI dev server so `npm run dev` keeps working with zero config.
 const API_ROOT = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 const API_BASE = `${API_ROOT}/api`;
 

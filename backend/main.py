@@ -32,10 +32,12 @@ app = FastAPI(
     version="1.0.0",
 )
 
-# CORS: FRONTEND_URL is set as a Render env var in production (the deployed
-# frontend's URL). Falls back to the local Vite dev server ports so nothing
-# breaks for local development when the env var isn't set. Supports a
-# comma-separated list in case more than one origin needs to be allowed.
+# CORS: FRONTEND_URL is set as an env var in production (the deployed
+# frontend's URL — e.g. a Vercel or Render URL). Falls back to the local
+# Vite dev server ports so nothing breaks for local development when the
+# env var isn't set. Supports a comma-separated list so both a production
+# URL and a preview-deployment URL (e.g. Vercel preview builds) can be
+# allowed at once.
 _default_origins = ["http://localhost:5173", "http://localhost:5174",
                      "http://127.0.0.1:5173", "http://127.0.0.1:5174"]
 _frontend_url = os.environ.get("FRONTEND_URL", "")
