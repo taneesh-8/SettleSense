@@ -373,5 +373,53 @@ def test_csv_upload_path_reconciles_without_crashing():
     assert result.report.confirmed_order_count > 0
 
 
+def _to_csv_rows_no_tag_column(models) -> list:
+    """Simulate the REALISTIC upload scenario: a genuine merchant CSV export
+    that never had a 'tag' column at all (it's an internal ground-truth
+    scoring field for the synthetic generator, not something any real
+    Razorpay export would contain) — as opposed to a CSV where the column
+    exists but happens to be blank. csv.DictReader would simply never
+    produce a 'tag' key for such rows."""
+    rows = []
+    for m in models:
+        row = {k: str(v) for k, v in m.model_dump().items() if k != "tag"}
+        rows.append(row)
+    return rows
+
+
+def test_csv_upload_with_no_tag_column_does_not_crash():
+    """Regression test for the realistic upload case: a CSV with NO 'tag'
+    column present (not present-but-empty). Before this fix, exceptions
+    like 'Unsettled order' and 'Duplicate settlement' derived their tag
+    directly from order.tag — which is always "" for real, untagged data —
+    tripping reporter.py's tag/reason consistency guard and crashing
+    /api/upload with an unhandled 500 for every real-world CSV upload,
+    since a genuine merchant export would never carry these ground-truth
+    labels in the first place. parse_csv_* must default a missing column
+    to "" without raising (dict.get already covers this), AND every
+    exception's own tag must be self-describing regardless of whether the
+    input carried a tag at all."""
+    raw_orders, raw_settlements, raw_bank = generate(seed=42)
+
+    csv_orders = parse_csv_orders(_to_csv_rows_no_tag_column(raw_orders))
+    csv_settlements = parse_csv_settlements(_to_csv_rows_no_tag_column(raw_settlements))
+    csv_bank = parse_csv_bank(_to_csv_rows_no_tag_column(raw_bank))
+
+    # No KeyError/ValueError from the missing column, and every parsed
+    # record defaults to an empty tag rather than crashing or inventing one.
+    assert all(o.tag == "" for o in csv_orders)
+    assert all(s.tag == "" for s in csv_settlements)
+    assert all(b.tag == "" for b in csv_bank)
+
+    result = reconcile(csv_orders, csv_settlements, csv_bank)  # must not raise
+    assert result.report.total_orders == 53
+    assert result.report.confirmed_order_count > 0
+
+    # Every exception must still have a real, non-empty, self-describing tag
+    # even though none of the input carried any tag data whatsoever.
+    for e in result.exceptions:
+        assert e.tag, f"{e.exception_id} has an empty tag with no input tag data to blame"
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

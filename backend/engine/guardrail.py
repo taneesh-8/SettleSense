@@ -133,7 +133,10 @@ def run_guardrail(
                 reason=reason,
                 amount_paise=p.bank_amount_paise,
                 risk_flag=False,
-                tag=p.tag,
+                # p.tag (from the underlying bank credit) adds useful context
+                # for synthetic/scored data when present; real uploaded CSVs
+                # won't carry it, so fall back to a self-describing category.
+                tag=p.tag or "insufficient_corroboration",
                 order_ids=rejected_order_ids,
             ))
 

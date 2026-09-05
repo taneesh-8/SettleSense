@@ -98,7 +98,12 @@ def run_deterministic(
                 reason=f"Unsettled order — no settlement found for {oid} (revenue at risk: Rs.{order.amount_paise/100:.2f})",
                 amount_paise=order.amount_paise,
                 risk_flag=True,
-                tag=order.tag,
+                # Hardcoded, not order.tag: order.tag is a synthetic-data
+                # ground-truth label that a real merchant CSV will never
+                # carry (no 'tag' column at all). The exception's own tag
+                # must describe what THIS exception is, unconditionally —
+                # same fix as the orphan_credit tag bug.
+                tag="unsettled",
                 order_ids=[oid],
             ))
             matched_order_ids.add(oid)  # prevent re-processing
@@ -117,7 +122,8 @@ def run_deterministic(
                 reason=f"Duplicate settlement — order settled {len(setls)} times (IDs: {', '.join(s.settlement_id for s in setls)})",
                 amount_paise=order.amount_paise,
                 risk_flag=False,
-                tag=order.tag,
+                # Hardcoded, not order.tag — see the unsettled case above.
+                tag="duplicate_settlement",
                 order_ids=[oid],
             ))
             matched_order_ids.add(oid)
@@ -163,7 +169,11 @@ def run_deterministic(
                 reason=f"Fee math mismatch for order {oid}: {reason}",
                 amount_paise=setl.gross_paise,
                 risk_flag=False,
-                tag=order.tag,
+                # order.tag (when present, e.g. "chargeback") adds useful root-
+                # cause context for synthetic/scored data; real uploaded CSVs
+                # won't have it, so fall back to a self-describing category
+                # rather than leaving this blank.
+                tag=order.tag or "fee_math_mismatch",
                 order_ids=[oid],
             ))
             matched_order_ids.add(oid)
