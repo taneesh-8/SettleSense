@@ -1,6 +1,10 @@
 import { GeneratedBatch, ReconciliationResult } from './types';
 
-const API_BASE = 'http://localhost:8000/api';
+// VITE_API_URL is injected at build time (Render sets it as an env var on
+// the static site's build). Falls back to the local FastAPI dev server so
+// `npm run dev` keeps working with zero config.
+const API_ROOT = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+const API_BASE = `${API_ROOT}/api`;
 
 export async function generateBatch(seed: number = 42): Promise<GeneratedBatch> {
   const resp = await fetch(`${API_BASE}/generate`, {

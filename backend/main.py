@@ -11,6 +11,7 @@ import csv
 import io
 import json
 import logging
+import os
 from typing import List, Optional
 
 from fastapi import FastAPI, HTTPException, UploadFile, File
@@ -31,9 +32,22 @@ app = FastAPI(
     version="1.0.0",
 )
 
+# CORS: FRONTEND_URL is set as a Render env var in production (the deployed
+# frontend's URL). Falls back to the local Vite dev server ports so nothing
+# breaks for local development when the env var isn't set. Supports a
+# comma-separated list in case more than one origin needs to be allowed.
+_default_origins = ["http://localhost:5173", "http://localhost:5174",
+                     "http://127.0.0.1:5173", "http://127.0.0.1:5174"]
+_frontend_url = os.environ.get("FRONTEND_URL", "")
+_allow_origins = [o.strip() for o in _frontend_url.split(",") if o.strip()] or _default_origins
+if _frontend_url:
+    # Keep local dev origins usable even when FRONTEND_URL is set (e.g. a
+    # developer pointing their local backend at a deployed FRONTEND_URL).
+    _allow_origins = list(dict.fromkeys(_allow_origins + _default_origins))
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=_allow_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -89,7 +103,7 @@ def _bank_to_dicts(bank: List[RawBankCredit]) -> List[dict]:
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "service": "SettleSense"}
+    return {"status": "ok"}
 
 
 @app.post("/api/generate")
@@ -160,5 +174,8 @@ async def api_upload(
 
 
 if __name__ == "__main__":
+    # Local dev entrypoint (python main.py). Render's start command
+    # (uvicorn main:app --host 0.0.0.0 --port $PORT) doesn't go through
+    # this block, but we honor $PORT here too for consistency.
     import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("main:app", host="0.0.0.0", port=int(os.environ.get("PORT", 8000)), reload=True)
